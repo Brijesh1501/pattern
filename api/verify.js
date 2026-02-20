@@ -1,20 +1,32 @@
-// Use require instead of import for maximum compatibility
-const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
-
+/**
+ * Fail-proof Serverless Function for Vercel
+ * No external dependencies required (Uses native Fetch)
+ */
 module.exports = async (req, res) => {
+    // 1. CORS Headers (Prevents browser blocks)
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+
+    if (req.method === 'OPTIONS') {
+        return res.status(200).end();
+    }
+
     const { email } = req.query;
     const apiKey = process.env.EMAILDETECTIVE_API_KEY;
 
+    // 2. Error Handling
     if (!email) {
-        return res.status(400).json({ error: 'Email is required' });
+        return res.status(400).json({ status: 'Error', message: 'Email is required' });
     }
 
     if (!apiKey) {
-        return res.status(500).json({ error: 'Server Config Error: API Key Missing' });
+        return res.status(500).json({ status: 'Error', message: 'API Key missing in Vercel' });
     }
 
     try {
-        const response = await fetch(`https://api.emaildetective.io/v1/verify?email=${encodeURIComponent(email)}`, {
+        // 3. API Call using native fetch
+        const apiUrl = `https://api.emaildetective.io/v1/verify?email=${encodeURIComponent(email)}`;
+        const response = await fetch(apiUrl, {
             method: 'GET',
             headers: {
                 'x-api-key': apiKey,
@@ -23,22 +35,23 @@ module.exports = async (req, res) => {
         });
 
         if (!response.ok) {
-            return res.status(response.status).json({ error: 'Upstream API Error' });
+            return res.status(response.status).json({ status: 'Error', message: 'API Error' });
         }
 
         const data = await response.json();
         
-        // Mapping logic
-        let status = 'Invalid';
+        // 4. Status Mapping
+        let finalStatus = 'Invalid';
         if (data.status === 'deliverable') {
-            status = data.is_catchall ? 'CatchAll' : 'Success';
+            finalStatus = data.is_catchall ? 'CatchAll' : 'Success';
         } else if (data.status === 'risky') {
-            status = 'CatchAll';
+            finalStatus = 'CatchAll';
         }
 
-        return res.status(200).json({ status: status });
+        return res.status(200).json({ status: finalStatus });
 
     } catch (error) {
-        return res.status(500).json({ error: 'Internal Server Error', details: error.message });
+        console.error('Server Function Error:', error);
+        return res.status(500).json({ status: 'Error', message: error.message });
     }
 };
