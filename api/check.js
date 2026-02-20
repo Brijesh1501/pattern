@@ -1,4 +1,5 @@
 export default async function handler(req, res) {
+    // 1. Get email using modern URL API to fix the warning
     const url = new URL(req.url, `https://${req.headers.host}`);
     const email = url.searchParams.get('email');
     const apiKey = process.env.EMAILDETECTIVE_API_KEY;
@@ -7,56 +8,54 @@ export default async function handler(req, res) {
         return res.status(400).json({ status: 'Error', message: 'Missing parameters' });
     }
 
-    // List of possible endpoints to try
-    const endpoints = [
-        `https://api.emaildetective.io/v1/verify?email=${encodeURIComponent(email)}`,
-        `https://api.emaildetective.io/verify?email=${encodeURIComponent(email)}`,
-        `https://api.emaildetective.io/v1.0/verify?email=${encodeURIComponent(email)}`
-    ];
+    try {
+        // 2. The URL format from the docs: /emails/[email-address]
+        const apiUrl = `https://api.emaildetective.io/emails/${encodeURIComponent(email)}`;
 
-    for (const apiUrl of endpoints) {
-        try {
-            console.log(`Trying endpoint: ${apiUrl}`);
-            const response = await fetch(apiUrl, {
-                method: 'GET',
-                headers: {
-                    'x-api-key': apiKey,
-                    'Accept': 'application/json'
-                }
-            });
+        console.log(`Verifying via EmailDetective: ${email}`);
 
-            const data = await response.json();
-
-            // If we get the "endpoint not found" error, we continue to the next URL in the list
-            if (data.message && data.message.includes("endpoint not found")) {
-                console.warn(`Endpoint failed: ${apiUrl}`);
-                continue; 
+        const response = await fetch(apiUrl, {
+            method: 'GET',
+            headers: {
+                // 3. The Header format from the docs: Authorization: <key>
+                'Authorization': apiKey.trim(),
+                'Accept': 'application/json'
             }
+        });
 
-            // If we reach here, we found the right endpoint!
-            console.log("SUCCESS! Found working endpoint:", apiUrl);
-            console.log("Data:", data);
+        if (!response.ok) {
+            const errLog = await response.text();
+            console.error("API Rejected Request:", errLog);
+            return res.status(response.status).json({ status: 'Invalid', message: 'Provider Error' });
+        }
 
-            let finalStatus = 'Invalid';
-            const apiStatus = (data.status || "").toLowerCase();
+        const data = await response.json();
+        console.log("Real Data Received:", data);
 
-            if (apiStatus === 'deliverable' || apiStatus === 'valid') {
-                finalStatus = data.is_catchall ? 'CatchAll' : 'Success';
-            } else if (apiStatus === 'risky' || data.is_catchall === true) {
+        /**
+         * 4. MAPPING LOGIC (Based on the Docs Example)
+         * valid_email: true/false
+         * score: number
+         */
+        let finalStatus = 'Invalid';
+
+        if (data.valid_email === true) {
+            // High score (usually > 80) is a clean success
+            // If valid_mx is false, it's often a catch-all or risky
+            if (data.score >= 80 && data.valid_mx === true) {
+                finalStatus = 'Success';
+            } else {
                 finalStatus = 'CatchAll';
             }
-
-            return res.status(200).json({ status: finalStatus });
-
-        } catch (err) {
-            console.error(`Error with ${apiUrl}:`, err.message);
-            continue;
         }
-    }
 
-    // If none of the endpoints worked
-    return res.status(404).json({ 
-        status: 'Error', 
-        message: 'All API endpoints rejected the request. Check your API Key and plan.' 
-    });
+        return res.status(200).json({ 
+            status: finalStatus,
+            score: data.score // Sending back score for your own debugging
+        });
+
+    } catch (error) {
+        console.error("Runtime Error:", error.message);
+        return res.status(200).json({ status: 'Invalid' });
+    }
 }
