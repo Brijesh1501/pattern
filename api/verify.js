@@ -1,36 +1,34 @@
-export default async function handler(req, res) {
+// Use require instead of import for maximum compatibility
+const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
+
+module.exports = async (req, res) => {
     const { email } = req.query;
+    const apiKey = process.env.EMAILDETECTIVE_API_KEY;
 
     if (!email) {
         return res.status(400).json({ error: 'Email is required' });
     }
 
-    const apiKey = process.env.EMAILDETECTIVE_API_KEY;
+    if (!apiKey) {
+        return res.status(500).json({ error: 'Server Config Error: API Key Missing' });
+    }
 
     try {
-        // EmailDetective typically uses a GET endpoint for single lookups
         const response = await fetch(`https://api.emaildetective.io/v1/verify?email=${encodeURIComponent(email)}`, {
             method: 'GET',
             headers: {
-                'x-api-key': apiKey, // Check their docs, sometimes it's 'Authorization': apiKey
-                'Authorization': `Bearer ${apiKey}`,
+                'x-api-key': apiKey,
                 'Accept': 'application/json'
             }
         });
 
         if (!response.ok) {
-            const errorData = await response.json();
-            return res.status(response.status).json({ error: errorData.message || 'API Error' });
+            return res.status(response.status).json({ error: 'Upstream API Error' });
         }
 
         const data = await response.json();
-
-        /**
-         * EmailDetective Response Mapping:
-         * Typically returns: { "status": "deliverable", "is_catchall": true, ... }
-         */
         
-        // We map their specific strings to your existing frontend logic
+        // Mapping logic
         let status = 'Invalid';
         if (data.status === 'deliverable') {
             status = data.is_catchall ? 'CatchAll' : 'Success';
@@ -38,13 +36,9 @@ export default async function handler(req, res) {
             status = 'CatchAll';
         }
 
-        res.status(200).json({
-            status: status, // Matches your JS: 'Success', 'CatchAll', or 'Invalid'
-            raw: data.status // Useful for debugging
-        });
+        return res.status(200).json({ status: status });
 
     } catch (error) {
-        console.error('EmailDetective Error:', error);
-        res.status(500).json({ error: 'Internal Server Error' });
+        return res.status(500).json({ error: 'Internal Server Error', details: error.message });
     }
-}
+};
