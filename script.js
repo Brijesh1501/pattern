@@ -612,77 +612,98 @@ const verifyAllBtn = document.getElementById('verifyAllBtn');
 // Updated Individual Verification with Real API Integration
 // Optimized Individual Verification for Verifalia Responses
 async function verifyIndividualEmail(email, btn) {
-    // 1. Setup UI state
     const originalContent = btn.innerHTML;
     const card = btn.closest('.email-result-card');
     
     btn.disabled = true;
-    // Spinner matches current text color
     btn.innerHTML = `<div class="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin mx-auto"></div>`;
 
     try {
-        // 2. Call your local API route
+        // Query the local API
         const response = await fetch(`/api/verify?email=${encodeURIComponent(email)}`);
         
         if (!response.ok) throw new Error('API Error');
 
         const data = await response.json();
         
-        // 3. Clean up existing Tailwind color classes
+        // Remove ALL possible color classes first
         btn.classList.remove(
             'text-blue-600', 'dark:text-blue-400', 
             'text-emerald-500', 'text-amber-500', 'text-red-500',
             'bg-blue-600/10', 'dark:bg-blue-600/20'
         );
 
-        /**
-         * 4. Verifalia Logic Mapping:
-         * - 'Success' -> Green (Valid)
-         * - 'CatchAll' -> Amber (Risky)
-         * - Others -> Red (Invalid)
-         */
+        // Map EmailDetective logic
+        // We look for 'Success' or 'CatchAll' which we mapped in our api/verify.js
         if (data.status === 'Success') {
             btn.innerText = "Valid";
             btn.classList.add('text-emerald-500');
-            if (card) card.style.borderColor = '#10b981'; // Emerald Green
+            if (card) card.style.borderColor = '#10b981'; 
         } 
         else if (data.status === 'CatchAll') {
             btn.innerText = "Risky";
             btn.classList.add('text-amber-500');
-            if (card) card.style.borderColor = '#f59e0b'; // Amber/Orange
+            if (card) card.style.borderColor = '#f59e0b';
         } 
         else {
             btn.innerText = "Invalid";
             btn.classList.add('text-red-500');
-            if (card) card.style.borderColor = '#ef4444'; // Red
+            if (card) card.style.borderColor = '#ef4444';
         }
 
     } catch (err) {
         console.error("Verification failed:", err);
-        showToast("Verification failed", "error");
-        
-        // Restore button if it fails
-        btn.innerHTML = originalContent;
+        showToast("Service Unavailable", "error");
+        btn.innerHTML = "Retry";
         btn.disabled = false;
     }
 }
 
 // Bulk Verification Logic
+// --- Bulk Verification Logic ---
 verifyAllBtn.addEventListener('click', async () => {
-    const buttons = document.querySelectorAll('.email-result-card button[onclick*="verifyIndividualEmail"]');
-    if (buttons.length === 0) return;
-
-    verifyAllBtn.disabled = true;
-    verifyAllBtn.innerText = "Verifying All...";
-
-    // Process in sequence or chunks to avoid rate limits
-    for (const btn of buttons) {
-        const email = btn.getAttribute('onclick').match(/'([^']+)'/)[1];
-        await verifyIndividualEmail(email, btn);
+    // 1. Find all individual verify buttons currently in the grid
+    const individualButtons = document.querySelectorAll('.email-result-card button[onclick*="verifyIndividualEmail"]');
+    
+    if (individualButtons.length === 0) {
+        showToast("No emails to verify", "error");
+        return;
     }
 
+    // 2. Update Global Button UI State
+    verifyAllBtn.disabled = true;
+    const originalText = verifyAllBtn.innerHTML;
+    verifyAllBtn.innerHTML = `
+        <div class="flex items-center gap-2">
+            <div class="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
+            <span>Verifying...</span>
+        </div>
+    `;
+
+    // 3. Loop through buttons and verify
+    for (const btn of individualButtons) {
+        // Skip if already verified (already has a color class)
+        if (btn.classList.contains('text-emerald-500') || 
+            btn.classList.contains('text-red-500') || 
+            btn.classList.contains('text-amber-500')) {
+            continue;
+        }
+
+        // Get the email address from the span in the same card
+        const card = btn.closest('.email-result-card');
+        const email = card.querySelector('span.truncate').innerText.trim();
+
+        // Run the individual verification function
+        // Note: We use 'await' so it does one at a time, respecting API limits
+        await verifyIndividualEmail(email, btn);
+
+        // Optional: Small 200ms pause to prevent overwhelming the serverless function
+        await new Promise(resolve => setTimeout(resolve, 200));
+    }
+
+    // 4. Restore Global Button State
     verifyAllBtn.disabled = false;
-    verifyAllBtn.innerText = "Verify All";
+    verifyAllBtn.innerHTML = originalText;
     showToast("Bulk verification complete", "success");
 });
 

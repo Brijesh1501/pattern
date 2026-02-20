@@ -13,6 +13,7 @@ export default async function handler(req, res) {
             method: 'GET',
             headers: {
                 'x-api-key': apiKey, // Check their docs, sometimes it's 'Authorization': apiKey
+                'Authorization': `Bearer ${apiKey}`,
                 'Accept': 'application/json'
             }
         });
