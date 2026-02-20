@@ -17,6 +17,7 @@ const nicknames = {
     "nicholas": ["nick", "nicky"],
     "james": ["jim", "jimmy", "jamie"],
     "christopher": ["chris", "topher", "kit","christ"],
+    "timothy": ["tim", "timmy", "timo", "moth"],
 
     // Additional Male Names
     "alexander": ["alex", "xander", "al", "lex"],

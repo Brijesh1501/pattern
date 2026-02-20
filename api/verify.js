@@ -5,42 +5,45 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'Email is required' });
     }
 
-    // You can get your API Token from the Verifalia Dashboard
-    const apiToken = process.env.VERIFALIA_API_TOKEN;
+    const apiKey = process.env.EMAILDETECTIVE_API_KEY;
 
     try {
-        const response = await fetch('https://api.verifalia.com/v2.4/email-validations', {
-            method: 'POST',
+        // EmailDetective typically uses a GET endpoint for single lookups
+        const response = await fetch(`https://api.emaildetective.io/v1/verify?email=${encodeURIComponent(email)}`, {
+            method: 'GET',
             headers: {
-                'Authorization': `Bearer ${apiToken}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                entries: [{ inputData: email }],
-                // 'Power' or 'Standard' - 'Standard' is cheaper/faster for free tiers
-                quality: 'Standard' 
-            })
+                'x-api-key': apiKey, // Check their docs, sometimes it's 'Authorization': apiKey
+                'Accept': 'application/json'
+            }
         });
 
         if (!response.ok) {
             const errorData = await response.json();
-            return res.status(response.status).json({ error: errorData.message || 'Verifalia API Error' });
+            return res.status(response.status).json({ error: errorData.message || 'API Error' });
         }
 
         const data = await response.json();
+
+        /**
+         * EmailDetective Response Mapping:
+         * Typically returns: { "status": "deliverable", "is_catchall": true, ... }
+         */
         
-        // Verifalia returns an 'entries' array. We check the first one.
-        // Status 'Success' means the email is deliverable.
-        const entry = data.entries[0];
-        
+        // We map their specific strings to your existing frontend logic
+        let status = 'Invalid';
+        if (data.status === 'deliverable') {
+            status = data.is_catchall ? 'CatchAll' : 'Success';
+        } else if (data.status === 'risky') {
+            status = 'CatchAll';
+        }
+
         res.status(200).json({
-            isValid: entry.status === 'Success',
-            status: entry.status, // e.g., 'Success', 'Undeliverable', 'CatchAll'
-            classification: entry.classification // e.g., 'Deliverable', 'Undeliverable'
+            status: status, // Matches your JS: 'Success', 'CatchAll', or 'Invalid'
+            raw: data.status // Useful for debugging
         });
 
     } catch (error) {
-        console.error('Serverless Error:', error);
+        console.error('EmailDetective Error:', error);
         res.status(500).json({ error: 'Internal Server Error' });
     }
 }
