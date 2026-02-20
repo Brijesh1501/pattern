@@ -1,13 +1,8 @@
 {
-  "functions": {
-    "api/verify.js": {
-      "runtime": "nodejs18.x"
-    }
-  },
-  "routes": [
-    {
-      "src": "/api/verify",
-      "dest": "/api/verify.js"
-    }
-  ]
+  "name": "email-pattern-tool",
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "node-fetch": "^3.3.2"
+  }
 }
