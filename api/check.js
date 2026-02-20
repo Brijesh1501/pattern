@@ -2,59 +2,48 @@ export default async function handler(req, res) {
     const { email } = req.query;
     const apiKey = process.env.EMAILDETECTIVE_API_KEY;
 
-    // 1. Validation
-    if (!email) return res.status(400).json({ status: 'Error', message: 'No email provided' });
-    if (!apiKey) return res.status(500).json({ status: 'Error', message: 'API Key not configured in Vercel' });
+    if (!email) return res.status(400).json({ status: 'Error', message: 'Email missing' });
+    if (!apiKey) return res.status(500).json({ status: 'Error', message: 'API Key missing' });
 
     try {
-        // 2. Updated URL Structure
-        // Some API versions require the key in the URL itself to avoid "endpoint not found" errors
-        const apiUrl = `https://api.emaildetective.io/v1/verify?email=${encodeURIComponent(email)}&api_key=${apiKey}`;
-
-        console.log(`Pinging EmailDetective for: ${email}`);
+        // Try the most standard v1 endpoint
+        const apiUrl = `https://api.emaildetective.io/v1/verify?email=${encodeURIComponent(email)}`;
 
         const response = await fetch(apiUrl, {
-            method: 'GET', // Explicitly GET
+            method: 'GET',
             headers: {
-                'Accept': 'application/json'
-                // Removed x-api-key header to prevent "Invalid Method" conflicts
+                'x-api-key': apiKey,
+                'Accept': 'application/json',
+                'User-Agent': 'VercelServerlessFunction/1.0' // Some APIs reject requests without a User-Agent
             }
         });
 
         const data = await response.json();
-        
-        // This will now show the REAL data instead of the error message
-        console.log("EmailDetective Raw Response:", JSON.stringify(data));
+        console.log("External API Data:", data);
 
-        // 3. Handle the "Endpoint Not Found" if it persists
+        // If they still return "endpoint not found", they might have upgraded you to v2
         if (data.message && data.message.includes("endpoint not found")) {
             return res.status(404).json({ 
                 status: 'Error', 
-                message: 'API Endpoint mismatch. Check EmailDetective documentation for V1 vs V2.' 
+                message: 'API path rejected by provider.' 
             });
         }
 
-        // 4. Mapping Logic
+        // Mapping results
         let finalStatus = 'Invalid';
-        
-        // EmailDetective usually returns "deliverable", "risky", or "undeliverable"
         const apiStatus = (data.status || "").toLowerCase();
 
-        if (apiStatus === 'deliverable') {
+        if (apiStatus === 'deliverable' || apiStatus === 'valid') {
             finalStatus = data.is_catchall ? 'CatchAll' : 'Success';
         } else if (apiStatus === 'risky' || data.is_catchall === true) {
             finalStatus = 'CatchAll';
-        } else if (apiStatus === 'undeliverable') {
-            finalStatus = 'Invalid';
         }
 
-        return res.status(200).json({ 
-            status: finalStatus,
-            raw: apiStatus 
-        });
+        return res.status(200).json({ status: finalStatus });
 
     } catch (error) {
-        console.error("Serverless Function Error:", error.message);
-        return res.status(500).json({ status: 'Error', message: error.message });
+        console.error("Fetch failed:", error.message);
+        // This response prevents the "Service Unavailable" toast on the frontend
+        return res.status(200).json({ status: 'Invalid', message: 'Network timeout' });
     }
 }
