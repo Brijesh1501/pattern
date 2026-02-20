@@ -1,3 +1,13 @@
 {
-  "type": "module"
+  "functions": {
+    "api/verify.js": {
+      "runtime": "nodejs18.x"
+    }
+  },
+  "routes": [
+    {
+      "src": "/api/verify",
+      "dest": "/api/verify.js"
+    }
+  ]
 }

@@ -620,7 +620,8 @@ async function verifyIndividualEmail(email, btn) {
 
     try {
         // Query the local API
-        const response = await fetch(`/api/verify?email=${encodeURIComponent(email)}`);
+        // Change this line:
+          const response = await fetch(`/api/check?email=${encodeURIComponent(email)}`);
         
         if (!response.ok) throw new Error('API Error');
 
